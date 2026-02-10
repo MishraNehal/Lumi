@@ -1,0 +1,5 @@
+LangChain is an open-source framework designed to help developers build applications powered by large language models (LLMs).
+
+It provides components for prompt management, document loading, text splitting, embeddings, vector stores, and retrieval-based question answering.
+
+LangChain is commonly used to build chatbots, AI assistants, and retrieval-augmented generation (RAG) systems.

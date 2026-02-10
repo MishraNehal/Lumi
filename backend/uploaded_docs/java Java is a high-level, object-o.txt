@@ -1,0 +1,9 @@
+java Java is a high-level, object-oriented programming language developed by Sun Microsystems and released in 1995.
+
+Java follows the principle of "Write Once, Run Anywhere", meaning that compiled Java code can run on any platform that has a Java Virtual Machine (JVM).
+
+Java programs are compiled into bytecode, which is executed by the JVM instead of directly by the operating system.
+
+Key features of Java include platform independence, strong memory management through garbage collection, multithreading support, and a rich standard library.
+
+Java is widely used for building enterprise applications, Android apps, web servers, and large-scale distributed systems.
