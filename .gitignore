@@ -1,4 +1,55 @@
-venv/
+# ── Python ──
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──
+venv/
+env/
+.venv/
+ENV/
+
+# ── Environment / secrets ── NEVER commit these
 .env
+.env.*
+!.env.example
+
+# ── Uploaded user files ── private data, never commit
+uploaded_docs/
+uploaded_ocr/
+
+# ── FAISS index ── regenerated on ingestion
+backend/data/
+backend/backend/
+
+# ── Project dump / utility scripts ──
+Lumi_full_code_dump.txt
+Crewai_full_code_dump.txt
+lumi.txt
+project_structure.txt
+dump_project.py
+Treestructure.py
+backend.zip
+*.zip
+
+# ── Test files ──
+test_memory.py
+test_vectorstore.py
+
+# ── OS files ──
+.DS_Store
+Thumbs.db
+
+# ── IDE ──
+.vscode/
+.idea/
+
+# ── Logs ──
 *.log
+logs/
