@@ -1,11 +1,9 @@
 from fastapi import FastAPI
-from routers import chat
-from routers import ingest_document
-from routers import ingest_ocr
-from routers import ingest_youtube
-from routers import ingest_web
-
-
+from backend.routers import chat
+from backend.routers import ingest_document
+from backend.routers import ingest_ocr
+from backend.routers import ingest_youtube
+from backend.routers import ingest_web
 
 
 app = FastAPI(

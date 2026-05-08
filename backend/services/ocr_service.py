@@ -1,42 +1,94 @@
+# import os
+# from utils.ocr_engine import ocr_image, ocr_pdf
+# from langchain_core.documents import Document
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from database.vectorstore import vector_store
+
+
+
+# def ingest_ocr_document(file_path: str):
+#     _, ext = os.path.splitext(file_path)
+#     ext = ext.lower()
+
+#     #  OCR based on file type
+#     if ext in [".png", ".jpg", ".jpeg"]:
+#         text = ocr_image(file_path)
+
+#     elif ext == ".pdf":
+#         text = ocr_pdf(file_path)
+
+#     else:
+#         raise ValueError("Unsupported OCR file type")
+
+#     if not text.strip():
+#         return
+
+#     # 2️ Convert to LangChain Document
+#     documents = [
+#         Document(
+#             page_content=text,
+#             metadata={"source": "ocr"}
+#         )
+#     ]
+
+#     # 3️ Chunk using LangChain
+#     splitter = RecursiveCharacterTextSplitter(
+#         chunk_size=500,
+#         chunk_overlap=50
+#     )
+#     chunks = splitter.split_documents(documents)
+
+#     # 4️ Store in Vector DB
+#     vector_store.add_documents(chunks)
+
+
+
 import os
-from utils.ocr_engine import ocr_image, ocr_pdf
+from backend.utils.ocr_engine import ocr_image, ocr_pdf
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from database.vectorstore import vector_store
+from backend.database.vectorstore import vector_store
 
 
-
-def ingest_ocr_document(file_path: str):
+def ingest_ocr_document(file_path: str) -> int:
+    """
+    Run OCR on image or PDF and store in vector DB.
+    Returns the number of chunks stored.
+    """
     _, ext = os.path.splitext(file_path)
     ext = ext.lower()
+    filename = os.path.basename(file_path)
 
-    #  OCR based on file type
-    if ext in [".png", ".jpg", ".jpeg"]:
+    if ext in [".png", ".jpg", ".jpeg", ".bmp", ".tiff"]:
         text = ocr_image(file_path)
-
     elif ext == ".pdf":
         text = ocr_pdf(file_path)
-
     else:
-        raise ValueError("Unsupported OCR file type")
+        raise ValueError(f"Unsupported OCR file type: {ext}")
 
-    if not text.strip():
-        return
+    if not text or not text.strip():
+        raise ValueError("OCR extracted no readable text from this file.")
 
-    # 2️ Convert to LangChain Document
     documents = [
         Document(
             page_content=text,
-            metadata={"source": "ocr"}
+            metadata={
+                "source": "ocr",
+                "filename": filename,
+                "file_type": ext,
+            },
         )
     ]
 
-    # 3️ Chunk using LangChain
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
-        chunk_overlap=50
+        chunk_overlap=50,
     )
     chunks = splitter.split_documents(documents)
 
-    # 4️ Store in Vector DB
+    if not chunks:
+        raise ValueError("OCR text was too short to process.")
+
     vector_store.add_documents(chunks)
+    print(f"✅ OCR ingested: {filename} → {len(chunks)} chunks")
+    return len(chunks)

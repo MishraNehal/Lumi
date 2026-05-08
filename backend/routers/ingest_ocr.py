@@ -1,7 +1,7 @@
 import os
 import shutil
 from fastapi import APIRouter, UploadFile, File
-from services.ocr_service import ingest_ocr_document
+from backend.services.ocr_service import ingest_ocr_document
 
 router = APIRouter(prefix="/ingest/ocr")
 
