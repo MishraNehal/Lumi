@@ -1,143 +1,3 @@
-# import streamlit as st
-# import requests
-
-# BACKEND_URL = "http://127.0.0.1:8000"
-
-# # ----------------------------------
-# # Page Config
-# # ----------------------------------
-# st.set_page_config(
-#     page_title="Lumi",
-#     page_icon="🧠",
-#     layout="centered"
-# )
-
-# st.title("🧠 Lumi – AI Personal Knowledge Assistant")
-# st.caption("Chat with your web pages, documents, and YouTube videos")
-
-# # ----------------------------------
-# # SESSION STATE (CHAT HISTORY)
-# # ----------------------------------
-# if "messages" not in st.session_state:
-#     st.session_state.messages = []
-
-# # ----------------------------------
-# # SIDEBAR — INGESTION
-# # ----------------------------------
-# st.sidebar.header("📥 Ingest Knowledge")
-
-# # ---- Web Ingestion ----
-# web_url = st.sidebar.text_input("🌐 Web URL")
-# if st.sidebar.button("Ingest Web"):
-#     if web_url.strip():
-#         res = requests.post(
-#             f"{BACKEND_URL}/ingest/web",
-#             params={"url": web_url}
-#         )
-#         if res.status_code == 200:
-#             st.sidebar.success(res.json().get("message", "Web ingested"))
-#         else:
-#             st.sidebar.error("Failed to ingest web")
-
-# # ---- YouTube Ingestion ----
-# yt_url = st.sidebar.text_input("🎥 YouTube URL")
-# if st.sidebar.button("Ingest YouTube"):
-#     if yt_url.strip():
-#         res = requests.post(
-#             f"{BACKEND_URL}/ingest/youtube",
-#             params={"url": yt_url}
-#         )
-#         if res.status_code == 200:
-#             st.sidebar.success(res.json().get("message", "YouTube ingested"))
-#         else:
-#             st.sidebar.error("Failed to ingest YouTube")
-
-# # ---- Document Ingestion ----
-# uploaded_file = st.sidebar.file_uploader(
-#     "📄 Upload Document",
-#     type=["txt", "pdf", "docx"]
-# )
-
-# if uploaded_file and st.sidebar.button("Ingest Document"):
-#     files = {
-#         "file": (uploaded_file.name, uploaded_file.getvalue())
-#     }
-#     res = requests.post(
-#         f"{BACKEND_URL}/ingest/document",
-#         files=files
-#     )
-#     if res.status_code == 200:
-#         st.sidebar.success("Document ingested")
-#     else:
-#         st.sidebar.error("Failed to ingest document")
-
-# # ---- Clear Chat ----
-# if st.sidebar.button("🧹 Clear Chat"):
-#     st.session_state.messages = []
-#     st.rerun()
-
-# # ----------------------------------
-# # RENDER CHAT HISTORY
-# # ----------------------------------
-# for message in st.session_state.messages:
-#     with st.chat_message(message["role"]):
-#         st.markdown(message["content"])
-
-#         # Show sources only for assistant messages
-#         if message["role"] == "assistant":
-#             sources = message.get("sources", [])
-#             if sources:
-#                 st.markdown("**Sources used:**")
-#                 for src in sources:
-#                     st.markdown(f"- {src}")
-
-# # ----------------------------------
-# # CHAT INPUT
-# # ----------------------------------
-# prompt = st.chat_input("Ask Lumi...")
-
-# if prompt:
-#     # ---- Show user message ----
-#     st.session_state.messages.append({
-#         "role": "user",
-#         "content": prompt
-#     })
-
-#     with st.chat_message("user"):
-#         st.markdown(prompt)
-
-#     # ---- Call backend ----
-#     res = requests.post(
-#         f"{BACKEND_URL}/chat",
-#         json={"question": prompt}
-#     )
-
-#     if res.status_code == 200:
-#         data = res.json()
-
-#         answer = data.get("answer", "No answer returned")
-#         sources = data.get("sources", [])
-
-#         # ---- Save assistant message ----
-#         st.session_state.messages.append({
-#             "role": "assistant",
-#             "content": answer,
-#             "sources": sources
-#         })
-
-#         with st.chat_message("assistant"):
-#             st.markdown(answer)
-#             if sources:
-#                 st.markdown("**Sources used:**")
-#                 for src in sources:
-#                     st.markdown(f"- {src}")
-#             else:
-#                 st.markdown("_No sources available_")
-
-#     else:
-#         with st.chat_message("assistant"):
-#             st.error("Failed to get response from Lumi backend")
-
 import streamlit as st
 import requests
 import time
@@ -189,18 +49,8 @@ html, body, [class*="css"] {
 }
 
 /* ── Hide default streamlit chrome ── */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-
-/* DO NOT hide header */
-header {
-    background: transparent !important;
-}
-
-/* Optional: style the toggle button */
-button[kind="header"] {
-    color: white !important;
-}
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
 
 /* ── Main container ── */
 .block-container {
@@ -442,6 +292,25 @@ def render_source_badges(sources: list[str]):
         badges_html += f'<span class="source-badge {stype}">{icon} {label}</span>'
     st.markdown(f'<div style="margin-top:0.5rem">{badges_html}</div>', unsafe_allow_html=True)
 
+
+def render_confidence_badge(confidence: str | None):
+    """Show High / Medium / Low confidence badge based on retrieval score."""
+    if not confidence:
+        return
+    config = {
+        "high":   ("✦ High confidence",   "#10b981", "rgba(16,185,129,0.12)", "rgba(16,185,129,0.4)"),
+        "medium": ("◈ Medium confidence", "#f59e0b", "rgba(245,158,11,0.12)", "rgba(245,158,11,0.4)"),
+        "low":    ("◇ Low confidence",    "#ef4444", "rgba(239,68,68,0.12)",  "rgba(239,68,68,0.4)"),
+    }
+    label, color, bg, border = config.get(confidence, config["low"])
+    st.markdown(
+        f'<div style="margin-top:0.4rem">'
+        f'<span style="display:inline-block;background:{bg};border:1px solid {border};'
+        f'border-radius:20px;padding:2px 10px;font-size:0.72rem;color:{color};'
+        f'font-family:JetBrains Mono,monospace">{label}</span></div>',
+        unsafe_allow_html=True,
+    )
+
 def typing_effect(placeholder, full_text: str, delay: float = 0.012):
     """Stream text word-by-word into a placeholder."""
     words = full_text.split(" ")
@@ -640,6 +509,10 @@ with st.sidebar:
     # ── CLEAR CHAT ──
     if st.button("🧹 Clear Chat"):
         st.session_state.messages = []
+        try:
+            requests.post(f"{BACKEND_URL}/chat/clear", timeout=5)
+        except Exception:
+            pass  # silently ignore if backend is offline
         st.rerun()
 
 
@@ -702,6 +575,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message["role"] == "assistant":
+            render_confidence_badge(message.get("confidence"))
             sources = message.get("sources", [])
             if sources:
                 render_source_badges(sources)
@@ -738,9 +612,13 @@ if prompt:
                 data = res.json()
                 answer = data.get("answer", "No answer returned.")
                 sources = data.get("sources", [])
+                confidence = data.get("confidence", None)
 
                 # Typing animation
                 typing_effect(answer_placeholder, answer, delay=0.008)
+
+                # Confidence badge
+                render_confidence_badge(confidence)
 
                 # Source badges
                 if sources:
@@ -751,6 +629,7 @@ if prompt:
                     "role": "assistant",
                     "content": answer,
                     "sources": sources,
+                    "confidence": confidence,
                 })
 
             else:

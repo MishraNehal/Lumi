@@ -1,262 +1,245 @@
-# from ai.prompts import RAG_PROMPT
-# from ai.llm import hf_llm
-# from ai.memory import SimpleChatMemory
-# from database.vectorstore import vector_store
-
-
-# memory = SimpleChatMemory()
-
-
-# def clean_youtube_text(text: str) -> str:
-#     """
-#     Remove common spoken fillers from YouTube transcripts
-#     to improve embedding similarity.
-#     """
-#     fillers = [
-#         "subscribe", "like", "share", "guys",
-#         "welcome", "channel", "hello", "today we will"
-#     ]
-#     lowered = text.lower()
-#     for f in fillers:
-#         lowered = lowered.replace(f, "")
-#     return lowered
-
-
-# def rag_answer(question: str) -> dict:
-#     """
-#     Full RAG pipeline with:
-#     - Higher k retrieval
-#     - Source diversity (YouTube + Web + Doc)
-#     - Deduplication
-#     - Strict grounding
-#     """
-
-#     # -------------------------------
-#     # 1️⃣ Primary Retrieval (k=6)
-#     # -------------------------------
-#     retriever = vector_store.as_retriever(
-#         search_kwargs={"k": 6}
-#     )
-
-#     docs = retriever.invoke(question)
-
-#     if not docs:
-#         return {
-#             "answer": "I don't know based on the provided data.",
-#             "sources": []
-#         }
-
-#     # -------------------------------
-#     # 2️⃣ Ensure YouTube participation
-#     # -------------------------------
-#     has_youtube = any(
-#         d.metadata.get("source") == "youtube" for d in docs
-#     )
-
-#     if not has_youtube:
-#         youtube_fallback = vector_store.similarity_search(
-#             question + " explained in video",
-#             k=2
-#         )
-#         for d in youtube_fallback:
-#             if d.metadata.get("source") == "youtube":
-#                 docs.append(d)
-
-#     # -------------------------------
-#     # 3️⃣ Deduplicate & clean context
-#     # -------------------------------
-#     seen = set()
-#     clean_chunks = []
-#     sources = set()
-
-#     for doc in docs:
-#         content = doc.page_content.strip()
-#         source = doc.metadata.get("source", "unknown")
-
-#         if source == "youtube":
-#             content = clean_youtube_text(content)
-
-#         if content and content not in seen:
-#             seen.add(content)
-#             clean_chunks.append(content)
-#             sources.add(source)
-
-#     if not clean_chunks:
-#         return {
-#             "answer": "I don't know based on the provided data.",
-#             "sources": []
-#         }
-
-#     context = "\n\n".join(clean_chunks)
-
-#     # -------------------------------
-#     # 4️⃣ Memory (last turn only)
-#     # -------------------------------
-#     chat_history = memory.get_last_turn()
-
-#     # -------------------------------
-#     # 5️⃣ Prompt construction
-#     # -------------------------------
-#     prompt = RAG_PROMPT.format(
-#         context=context,
-#         chat_history=chat_history,
-#         question=question
-#     )
-
-#     # -------------------------------
-#     # 6️⃣ LLM call
-#     # -------------------------------
-#     answer = hf_llm.generate(prompt)
-
-#     # -------------------------------
-#     # 7️⃣ Save memory
-#     # -------------------------------
-#     memory.add(question, answer)
-
-#     return {
-#         "answer": answer,
-#         "sources": list(sources)
-#     }
-
-
-
-from backend.ai.prompts import RAG_PROMPT
+from backend.ai.prompts import RAG_PROMPT, NO_CONTEXT_RESPONSE, OFF_TOPIC_RESPONSE
 from backend.ai.llm import hf_llm
 from backend.ai.memory import SimpleChatMemory
 from backend.database.vectorstore import vector_store
 
 
-memory = SimpleChatMemory()
+# ── Shared memory — persists across requests in same session ──
+memory = SimpleChatMemory(max_turns=5)
+
+# ── Score threshold — FAISS L2 distance ──
+# Below this = relevant, above this = reject and don't call LLM
+RELEVANCE_THRESHOLD = 1.5
+
+# ── Off-topic / greeting detection ──
+GREETINGS = {"hi", "hello", "hey", "good morning", "good evening",
+             "sup", "what's up", "hii", "helo", "namaste"}
+
+OFF_TOPIC_PATTERNS = [
+    "tell me a joke", "what is your name", "who made you",
+    "what is 2+2", "capital of", "weather today", "stock price",
+    "who is the president", "what day is it", "translate this",
+    "write a poem", "write code", "what is love",
+]
 
 
-def clean_youtube_text(text: str) -> str:
-    """Remove common spoken fillers from YouTube transcripts."""
-    fillers = [
-        "subscribe", "like", "share", "guys",
-        "welcome", "channel", "hello", "today we will",
-    ]
-    lowered = text.lower()
-    for f in fillers:
-        lowered = lowered.replace(f, "")
-    return lowered
+def is_greeting(question: str) -> bool:
+    q = question.lower().strip().rstrip("?!.")
+    return q in GREETINGS
+
+
+def is_off_topic(question: str) -> bool:
+    q = question.lower()
+    return any(pattern in q for pattern in OFF_TOPIC_PATTERNS)
 
 
 def get_source_label(doc) -> str:
-    """Build a human-readable source label from document metadata."""
+    """Human-readable source label from document metadata."""
     source_type = doc.metadata.get("source", "unknown")
     if source_type == "youtube":
-        video_id = doc.metadata.get("video_id", "")
         url = doc.metadata.get("url", "")
+        video_id = doc.metadata.get("video_id", "")
         return url if url else f"YouTube ({video_id})"
     elif source_type == "web":
         return doc.metadata.get("url", "Web page")
-    elif source_type == "document" or source_type == "ocr":
+    elif source_type in ["document", "ocr"]:
         filename = doc.metadata.get("filename", "")
-        if filename:
-            return filename
-        return f"Document ({doc.metadata.get('file_type', 'file')})"
+        return filename if filename else f"Document ({doc.metadata.get('file_type', 'file')})"
     return source_type
+
+
+def clean_youtube_text(text: str) -> str:
+    """Remove spoken filler words from YouTube transcripts."""
+    fillers = [
+        "subscribe", "like this video", "hit the bell",
+        "smash that", "welcome back", "don't forget to",
+        "in this video", "today we will", "guys",
+    ]
+    for filler in fillers:
+        text = text.replace(filler, "").replace(filler.capitalize(), "")
+    return text.strip()
 
 
 def rag_answer(question: str) -> dict:
     """
-    Full RAG pipeline:
-    1. Guard against empty vector store
-    2. Retrieve top-k chunks (k=6)
-    3. Ensure source diversity
-    4. Deduplicate chunks
-    5. Build prompt with memory
-    6. Generate answer via LLM
-    7. Return answer + sources
+    Full RAG pipeline with score-based rejection:
+
+    1.  Greeting / off-topic guard
+    2.  Empty KB guard
+    3.  Retrieve top-k chunks WITH scores (FAISS L2)
+    4.  Reject if best score > RELEVANCE_THRESHOLD (no LLM call)
+    5.  Filter only relevant chunks
+    6.  Source diversity (include YouTube if available)
+    7.  Deduplicate chunks
+    8.  Build context + conversation history
+    9.  LLM call
+    10. Post-process + save to memory
     """
 
-    # Guard: no documents ingested yet
+    question = question.strip()
+
+    # ── 1. Greeting ──
+    if is_greeting(question):
+        return {
+            "answer": (
+                "Hello! 👋 I'm **Lumi**, your AI study assistant.\n\n"
+                "I can answer questions based on the study material you've uploaded — "
+                "PDFs, YouTube lectures, websites, notes, and more.\n\n"
+                "Upload something from the sidebar and ask me anything about it!"
+            ),
+            "sources": [],
+            "confidence": None,
+        }
+
+    # ── 2. Off-topic ──
+    if is_off_topic(question):
+        return {
+            "answer": OFF_TOPIC_RESPONSE,
+            "sources": [],
+            "confidence": None,
+        }
+
+    # ── 3. Empty KB ──
     if vector_store.is_empty():
         return {
-            "answer": "No knowledge base loaded yet. Please ingest a document, YouTube video, or web page first using the sidebar.",
+            "answer": (
+                "📭 **No study material loaded yet.**\n\n"
+                "Please add content first:\n"
+                "- 📄 Upload a PDF, DOCX, PPTX, or TXT from the sidebar\n"
+                "- 🎥 Paste a YouTube lecture URL\n"
+                "- 🌐 Add a website or article link\n\n"
+                "Then ask me anything about it!"
+            ),
             "sources": [],
+            "confidence": None,
         }
 
-    # 1. Primary retrieval
-    retriever = vector_store.as_retriever(search_kwargs={"k": 6})
-    if retriever is None:
-        return {
-            "answer": "Knowledge base is not ready. Please ingest some content first.",
-            "sources": [],
-        }
-
+    # ── 4. Retrieve with scores ──
     try:
-        docs = retriever.invoke(question)
+        docs_with_scores = vector_store.similarity_search_with_score(question, k=8)
     except Exception as e:
         return {
-            "answer": f"Retrieval error: {str(e)}. Please try again.",
+            "answer": f"⚠️ Retrieval error: {str(e)}. Please try again.",
             "sources": [],
+            "confidence": None,
         }
 
-    if not docs:
+    if not docs_with_scores:
         return {
-            "answer": "I could not find relevant information for your question in the knowledge base.",
+            "answer": NO_CONTEXT_RESPONSE,
             "sources": [],
+            "confidence": None,
         }
 
-    # 2. Ensure YouTube participation (if any YouTube content exists)
-    has_youtube = any(d.metadata.get("source") == "youtube" for d in docs)
+    # ── 5. Score-based rejection ──
+    # FAISS L2: lower = better. If even the best chunk is too far away, reject.
+    best_score = min(score for _, score in docs_with_scores)
+
+    if best_score > RELEVANCE_THRESHOLD:
+        return {
+            "answer": (
+                "❌ I couldn't find relevant information about this in your uploaded material.\n\n"
+                "Please make sure you've uploaded content related to your question, "
+                "or try rephrasing it."
+            ),
+            "sources": [],
+            "confidence": "low",
+        }
+
+    # ── 6. Filter only relevant chunks (below threshold) ──
+    relevant_docs = [
+        doc for doc, score in docs_with_scores
+        if score < RELEVANCE_THRESHOLD
+    ]
+
+    # ── 7. Compute confidence from avg score of top-3 ──
+    top_scores = sorted([score for _, score in docs_with_scores])[:3]
+    avg_score = sum(top_scores) / len(top_scores)
+
+    if avg_score < 0.5:
+        confidence = "high"
+    elif avg_score < 1.0:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    # ── 8. Source diversity: include YouTube if missed ──
+    has_youtube = any(d.metadata.get("source") == "youtube" for d in relevant_docs)
     if not has_youtube:
         try:
-            youtube_fallback = vector_store.similarity_search(
-                question + " explained in video", k=2
-            )
-            for d in youtube_fallback:
+            yt_docs = vector_store.similarity_search(question, k=2)
+            for d in yt_docs:
                 if d.metadata.get("source") == "youtube":
-                    docs.append(d)
+                    relevant_docs.append(d)
         except Exception:
             pass
 
-    # 3. Deduplicate and clean
-    seen = set()
-    clean_chunks = []
+    # ── 9. Deduplicate + clean ──
+    seen_content = set()
     source_labels = set()
+    clean_chunks = []
 
-    for doc in docs:
+    for doc in relevant_docs:
         content = doc.page_content.strip()
         if doc.metadata.get("source") == "youtube":
             content = clean_youtube_text(content)
-        if content and content not in seen:
-            seen.add(content)
+        if content and content not in seen_content and len(content) > 30:
+            seen_content.add(content)
             clean_chunks.append(content)
             source_labels.add(get_source_label(doc))
 
     if not clean_chunks:
         return {
-            "answer": "I don't know based on the provided data.",
+            "answer": NO_CONTEXT_RESPONSE,
             "sources": [],
+            "confidence": "low",
         }
 
-    context = "\n\n".join(clean_chunks)
+    # ── 10. Build context ──
+    context = "\n\n---\n\n".join(clean_chunks)
 
-    # 4. Memory (last turn only to prevent topic pollution)
-    chat_history = memory.get_last_turn()
+    # ── 11. Conversation history ──
+    chat_history = (
+        memory.get_full_history()
+        if not memory.is_empty()
+        else "No previous conversation."
+    )
 
-    # 5. Build prompt
+    # ── 12. Prompt ──
     prompt = RAG_PROMPT.format(
         context=context,
         chat_history=chat_history,
         question=question,
     )
 
-    # 6. LLM call
+    # ── 13. LLM call ──
     try:
         answer = hf_llm.generate(prompt)
     except Exception as e:
         return {
-            "answer": f"LLM error: {str(e)}. Please check your GROQ_API_KEY.",
+            "answer": f"⚠️ LLM error: {str(e)}. Check your GROQ_API_KEY in .env file.",
             "sources": list(source_labels),
+            "confidence": None,
         }
 
-    # 7. Save to memory
+    # ── 14. Reject garbage answers ──
+    if not answer or len(answer.strip()) < 10:
+        return {
+            "answer": NO_CONTEXT_RESPONSE,
+            "sources": [],
+            "confidence": "low",
+        }
+
+    # ── 15. Save to memory ──
     memory.add(question, answer)
 
     return {
         "answer": answer,
         "sources": list(source_labels),
+        "confidence": confidence,
     }
+
+
+def clear_memory():
+    """Call this when user clears chat."""
+    memory.clear()

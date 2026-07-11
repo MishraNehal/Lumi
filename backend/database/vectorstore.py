@@ -1,30 +1,3 @@
-# from langchain_community.vectorstores import FAISS
-# from ai.embeddings import get_embedding_model
-
-# class VectorStore:
-#     def __init__(self):
-#         self.embedding_model = get_embedding_model()
-#         self.db = None
-
-#     def add_documents(self, documents):
-#         if self.db is None:
-#             self.db = FAISS.from_documents(documents, self.embedding_model)
-#         else:
-#             self.db.add_documents(documents)
-
-#     def similarity_search(self, query: str, k: int = 4):
-#         if self.db is None:
-#             return []
-#         return self.db.similarity_search(query, k=k)
-
-#     def as_retriever(self, **kwargs):
-#         if self.db is None:
-#             return None
-#         return self.db.as_retriever(**kwargs)
-
-# vector_store = VectorStore()
-
-
 import os
 import shutil
 from langchain_community.vectorstores import FAISS
@@ -56,24 +29,16 @@ class VectorStore:
             print("ℹ️ No existing FAISS index found. Will create on first ingestion.")
 
     def _save_to_disk(self):
-        """Windows-safe FAISS save — deletes folder first to avoid WinError 183."""
+        """Windows-safe FAISS save — temp folder swap to avoid WinError 183."""
         try:
-            # Save to a temp folder first
             temp_path = FAISS_PATH + "_temp"
-
-            # Clean up any leftover temp folder
             if os.path.exists(temp_path):
                 shutil.rmtree(temp_path)
-
-            # Save to temp
             os.makedirs(temp_path, exist_ok=True)
             self.db.save_local(temp_path)
-
-            # Now swap: delete old, rename temp to real
             if os.path.exists(FAISS_PATH):
                 shutil.rmtree(FAISS_PATH)
             os.rename(temp_path, FAISS_PATH)
-
             print(f"✅ FAISS index saved to {FAISS_PATH}")
         except Exception as e:
             print(f"⚠️ Could not save FAISS index: {e}")
@@ -102,6 +67,19 @@ class VectorStore:
         if self.db is None:
             return []
         return self.db.similarity_search(query, k=k)
+
+    def similarity_search_with_score(self, query: str, k: int = 8):
+        """
+        Returns list of (Document, score) tuples.
+        FAISS L2 distance — lower = more relevant.
+          0.0 - 0.5  → very relevant
+          0.5 - 1.0  → relevant
+          1.0 - 1.5  → loosely related
+          1.5+       → likely irrelevant / off-topic
+        """
+        if self.db is None:
+            return []
+        return self.db.similarity_search_with_score(query, k=k)
 
     def as_retriever(self, **kwargs):
         if self.db is None:
