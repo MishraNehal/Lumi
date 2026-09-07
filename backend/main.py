@@ -4,6 +4,9 @@ from backend.routers import ingest_document
 from backend.routers import ingest_ocr
 from backend.routers import ingest_youtube
 from backend.routers import ingest_web
+from backend.routers import auth
+from backend.routers import conversations
+from backend.database.db import init_db
 
 
 app = FastAPI(
@@ -12,6 +15,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
+init_db()
+
+app.include_router(auth.router)
+app.include_router(conversations.router)
 app.include_router(ingest_document.router)
 app.include_router(ingest_ocr.router)
 app.include_router(ingest_youtube.router)
