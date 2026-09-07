@@ -5,18 +5,21 @@
 
 
 # @router.post("")
-# def ingest_web_route(url: str):
+# def ingest_web_route(url: str, current_user: User = Depends(get_current_user)):
 #     ingest_web(url)
 #     return {"message": "Web page ingested successfully"}
 
 from fastapi import APIRouter, HTTPException
 from backend.services.web_service import ingest_web
+from fastapi import Depends
+from backend.auth.dependencies import get_current_user
+from backend.database.models import User
 
 router = APIRouter(prefix="/ingest/web")
 
 
 @router.post("")
-def ingest_web_route(url: str):
+def ingest_web_route(url: str, current_user: User = Depends(get_current_user)):
     """Ingest a web page into the knowledge base."""
     if not url or not url.strip():
         raise HTTPException(status_code=400, detail="URL is required.")
@@ -28,7 +31,7 @@ def ingest_web_route(url: str):
         )
 
     try:
-        result = ingest_web(url.strip())
+        result = ingest_web(url.strip(), current_user.id)
         return {
             "message": "Web page ingested successfully.",
             "chunks": result.get("chunks", 0),

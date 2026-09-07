@@ -39,7 +39,7 @@
 #     chunks = splitter.split_documents(documents)
 
 #     # 4️ Store in Vector DB
-#     vector_store.add_documents(chunks)
+#     get_vector_store(user_id).add_documents(chunks)
 
 
 
@@ -47,10 +47,10 @@ import os
 from backend.utils.ocr_engine import ocr_image, ocr_pdf
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from backend.database.vectorstore import vector_store
+from backend.database.vectorstore import get_vector_store
 
 
-def ingest_ocr_document(file_path: str) -> int:
+def ingest_ocr_document(file_path: str, user_id: int) -> int:
     """
     Run OCR on image or PDF and store in vector DB.
     Returns the number of chunks stored.
@@ -89,6 +89,6 @@ def ingest_ocr_document(file_path: str) -> int:
     if not chunks:
         raise ValueError("OCR text was too short to process.")
 
-    vector_store.add_documents(chunks)
+    get_vector_store(user_id).add_documents(chunks)
     print(f"✅ OCR ingested: {filename} → {len(chunks)} chunks")
     return len(chunks)

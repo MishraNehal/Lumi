@@ -22,14 +22,14 @@
 #         doc.metadata["source"] = "web"
 #         doc.metadata["url"] = url
 
-#     vector_store.add_documents(chunks)
+#     get_vector_store(user_id).add_documents(chunks)
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from backend.database.vectorstore import vector_store
+from backend.database.vectorstore import get_vector_store
 
 
-def ingest_web(url: str) -> dict:
+def ingest_web(url: str, user_id: int) -> dict:
     """
     Scrape a web page, chunk, embed and store in vector DB.
     Returns dict with chunk count.
@@ -55,7 +55,7 @@ def ingest_web(url: str) -> dict:
         doc.metadata["url"] = url
         doc.metadata["filename"] = url  # used for source label in UI
 
-    vector_store.add_documents(chunks)
+    get_vector_store(user_id).add_documents(chunks)
     print(f"✅ Web page ingested: {url} → {len(chunks)} chunks")
 
     return {"chunks": len(chunks)}

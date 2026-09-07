@@ -1,11 +1,7 @@
 from backend.ai.prompts import RAG_PROMPT, NO_CONTEXT_RESPONSE, OFF_TOPIC_RESPONSE
 from backend.ai.llm import hf_llm
-from backend.ai.memory import SimpleChatMemory
-from backend.database.vectorstore import vector_store
+from backend.database.vectorstore import get_vector_store
 
-
-# ── Shared memory — persists across requests in same session ──
-memory = SimpleChatMemory(max_turns=5)
 
 # ── Score threshold — FAISS L2 distance ──
 # Below this = relevant, above this = reject and don't call LLM
@@ -60,7 +56,7 @@ def clean_youtube_text(text: str) -> str:
     return text.strip()
 
 
-def rag_answer(question: str) -> dict:
+def rag_answer(question: str, user_id: int, chat_history: str = "No previous conversation.") -> dict:
     """
     Full RAG pipeline with score-based rejection:
 
@@ -100,7 +96,7 @@ def rag_answer(question: str) -> dict:
         }
 
     # ── 3. Empty KB ──
-    if vector_store.is_empty():
+    if get_vector_store(user_id).is_empty():
         return {
             "answer": (
                 "📭 **No study material loaded yet.**\n\n"
@@ -116,7 +112,7 @@ def rag_answer(question: str) -> dict:
 
     # ── 4. Retrieve with scores ──
     try:
-        docs_with_scores = vector_store.similarity_search_with_score(question, k=8)
+        docs_with_scores = get_vector_store(user_id).similarity_search_with_score(question, k=8)
     except Exception as e:
         return {
             "answer": f"⚠️ Retrieval error: {str(e)}. Please try again.",
@@ -167,7 +163,7 @@ def rag_answer(question: str) -> dict:
     has_youtube = any(d.metadata.get("source") == "youtube" for d in relevant_docs)
     if not has_youtube:
         try:
-            yt_docs = vector_store.similarity_search(question, k=2)
+            yt_docs = get_vector_store(user_id).similarity_search(question, k=2)
             for d in yt_docs:
                 if d.metadata.get("source") == "youtube":
                     relevant_docs.append(d)
@@ -198,13 +194,6 @@ def rag_answer(question: str) -> dict:
     # ── 10. Build context ──
     context = "\n\n---\n\n".join(clean_chunks)
 
-    # ── 11. Conversation history ──
-    chat_history = (
-        memory.get_full_history()
-        if not memory.is_empty()
-        else "No previous conversation."
-    )
-
     # ── 12. Prompt ──
     prompt = RAG_PROMPT.format(
         context=context,
@@ -230,16 +219,8 @@ def rag_answer(question: str) -> dict:
             "confidence": "low",
         }
 
-    # ── 15. Save to memory ──
-    memory.add(question, answer)
-
     return {
         "answer": answer,
         "sources": list(source_labels),
         "confidence": confidence,
     }
-
-
-def clear_memory():
-    """Call this when user clears chat."""
-    memory.clear()

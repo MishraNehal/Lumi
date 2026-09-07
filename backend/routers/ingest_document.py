@@ -25,9 +25,11 @@
 
 import os
 import shutil
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from typing import List
+from fastapi import APIRouter, UploadFile, File
 from backend.services.document_service import ingest_document
+from fastapi import Depends
+from backend.auth.dependencies import get_current_user
+from backend.database.models import User
 
 router = APIRouter(prefix="/ingest/document")
 
@@ -38,12 +40,13 @@ SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc", ".pptx", ".xlsx", ".xls
 
 
 @router.post("")
-def upload_documents(files: List[UploadFile] = File(...)):
+def upload_documents(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """
-    Upload and ingest one or multiple documents.
+    Upload and ingest one document.
     Supports: PDF, TXT, DOCX, PPTX, XLSX, and more.
     """
     results = []
+    files = [file]
 
     for file in files:
         _, ext = os.path.splitext(file.filename)
@@ -72,7 +75,7 @@ def upload_documents(files: List[UploadFile] = File(...)):
             continue
 
         try:
-            chunk_count = ingest_document(file_path, ext)
+            chunk_count = ingest_document(file_path, ext, current_user.id)
             results.append({
                 "filename": file.filename,
                 "status": "success",

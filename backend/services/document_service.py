@@ -10,7 +10,7 @@
 # from services.ocr_service import ingest_ocr_document
 
 
-# def ingest_document(file_path: str, ext: str):
+# def ingest_document(file_path: str, ext: str, user_id: int):
 
 #     # PDF (with OCR fallback)
 #     if ext == ".pdf":
@@ -79,7 +79,7 @@
 #     chunks = splitter.split_documents(documents)
 
 #     #  Store in vector DB
-#     vector_store.add_documents(chunks)
+#     get_vector_store(user_id).add_documents(chunks)
 
 
 import os
@@ -91,12 +91,11 @@ from langchain_community.document_loaders import (
     UnstructuredExcelLoader,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from backend.database.vectorstore import vector_store
+from backend.database.vectorstore import get_vector_store
 from backend.services.ocr_service import ingest_ocr_document
 
 
-def ingest_document(file_path: str, ext: str) -> int:
+def ingest_document(file_path: str, ext: str, user_id: int) -> int:
     """
     Parse, chunk, embed and store a document.
     Returns the number of chunks stored.
@@ -111,10 +110,10 @@ def ingest_document(file_path: str, ext: str) -> int:
             documents = loader.load()
             if not any(doc.page_content.strip() for doc in documents):
                 print(f"⚠️ PDF text empty, falling back to OCR: {filename}")
-                return ingest_ocr_document(file_path)
+                return ingest_ocr_document(file_path, user_id)
         except Exception as e:
             print(f"⚠️ PDF parsing failed, falling back to OCR: {e}")
-            return ingest_ocr_document(file_path)
+            return ingest_ocr_document(file_path, user_id)
 
     # Plain text and code files
     elif ext in [".txt", ".py", ".js", ".md", ".json"]:
@@ -132,10 +131,10 @@ def ingest_document(file_path: str, ext: str) -> int:
             documents = loader.load()
         except Exception as e:
             print(f"⚠️ DOCX parsing failed, trying OCR: {e}")
-            return ingest_ocr_document(file_path)
+            return ingest_ocr_document(file_path, user_id)
 
     elif ext == ".doc":
-        return ingest_ocr_document(file_path)
+        return ingest_ocr_document(file_path, user_id)
 
     # PowerPoint
     elif ext == ".pptx":
@@ -176,6 +175,6 @@ def ingest_document(file_path: str, ext: str) -> int:
         raise ValueError("Document content was too short to process.")
 
     # Store
-    vector_store.add_documents(chunks)
+    get_vector_store(user_id).add_documents(chunks)
     print(f"✅ Document ingested: {filename} → {len(chunks)} chunks")
     return len(chunks)

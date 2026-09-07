@@ -26,7 +26,7 @@
 #     )
 
 #     chunks = splitter.split_documents(documents)
-#     vector_store.add_documents(chunks)
+#     get_vector_store(user_id).add_documents(chunks)
 #     print(f"✅ YouTube chunks stored: {len(chunks)}")
 
 #     return True
@@ -35,7 +35,7 @@
 from backend.utils.youtube_transcript import fetch_transcript, extract_video_id
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from backend.database.vectorstore import vector_store
+from backend.database.vectorstore import get_vector_store
 
 
 def clean_transcript_text(text: str) -> str:
@@ -54,7 +54,7 @@ def clean_transcript_text(text: str) -> str:
     return text.strip()
 
 
-def ingest_youtube(url: str) -> dict:
+def ingest_youtube(url: str, user_id: int) -> dict:
     """
     Full YouTube ingestion pipeline.
     Returns a result dict with status, message, and chunk count.
@@ -111,7 +111,7 @@ def ingest_youtube(url: str) -> dict:
         }
 
     # Store in vector DB
-    vector_store.add_documents(chunks)
+    get_vector_store(user_id).add_documents(chunks)
     print(f"✅ YouTube ingestion complete: {len(chunks)} chunks stored")
 
     return {

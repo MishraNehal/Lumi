@@ -40,20 +40,18 @@ env_path = BASE_DIR / ".env"
 load_dotenv(env_path)
 
 
-MODEL_NAME = "llama-3.1-8b-instant"
-
-
 class GroqLLM:
     def __init__(self):
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise ValueError("GROQ_API_KEY not found in environment variables. Add it to your .env file.")
+        self.model_name = os.getenv("GROQ_MODEL_NAME", "openai/gpt-oss-20b")
         self.client = Groq(api_key=api_key)
 
     def generate(self, prompt: str) -> str:
         try:
             response = self.client.chat.completions.create(
-                model=MODEL_NAME,
+                model=self.model_name,
                 messages=[
                     {
                         "role": "system",
