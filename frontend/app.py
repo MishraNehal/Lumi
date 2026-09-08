@@ -363,14 +363,30 @@ with st.sidebar:
         if not st.session_state.backend_ok:
             st.error("Backend is offline.")
         else:
-            files_payload = [
-                ("files", (f.name, f.getvalue(), f.type)) for f in uploaded_files
-            ]
             with st.spinner(f"Processing {len(uploaded_files)} file(s)…"):
                 try:
-                    res = requests.post(f"{BACKEND_URL}/ingest/document", files=files_payload, timeout=120)
-                    if res.status_code == 200:
-                        data = res.json()
+                    responses = [
+                        requests.post(
+                            f"{BACKEND_URL}/ingest/document",
+                            files={"file": (f.name, f.getvalue(), f.type)},
+                            timeout=120,
+                        )
+                        for f in uploaded_files
+                    ]
+                    if all(response.status_code == 200 for response in responses):
+                        data = {
+                            "message": f"{len(uploaded_files)} document(s) submitted.",
+                            "results": [
+                                result
+                                for response in responses
+                                for result in response.json().get("results", [])
+                            ],
+                            "total_chunks": sum(
+                                result.get("chunks", 0)
+                                for response in responses
+                                for result in response.json().get("results", [])
+                            ),
+                        }
                         for r in data.get("results", []):
                             if r["status"] == "success":
                                 st.session_state.ingested_sources.append({
@@ -385,7 +401,9 @@ with st.sidebar:
                                 unsafe_allow_html=True,
                             )
                     else:
-                        st.error(f"Error: {res.json().get('detail', 'Upload failed')}")
+                        for response in responses:
+                            if response.status_code != 200:
+                                st.error(f"Error: {response.text}")
                 except Exception as e:
                     st.error(f"Connection error: {e}")
 
