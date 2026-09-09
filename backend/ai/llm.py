@@ -40,18 +40,20 @@ env_path = BASE_DIR / ".env"
 load_dotenv(env_path)
 
 
+MODEL_NAME = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
 class GroqLLM:
     def __init__(self):
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise ValueError("GROQ_API_KEY not found in environment variables. Add it to your .env file.")
-        self.model_name = os.getenv("GROQ_MODEL_NAME", "openai/gpt-oss-20b")
         self.client = Groq(api_key=api_key)
 
     def generate(self, prompt: str) -> str:
         try:
             response = self.client.chat.completions.create(
-                model=self.model_name,
+                model=MODEL_NAME,
                 messages=[
                     {
                         "role": "system",
@@ -69,6 +71,31 @@ class GroqLLM:
             return response.choices[0].message.content.strip()
         except Exception as e:
             return f"Error generating response: {str(e)}"
+
+    def generate_stream(self, prompt: str):
+        """Yields answer chunks as they arrive from Groq."""
+        stream = self.client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Lumi, an intelligent AI knowledge assistant. "
+                        "You answer questions strictly based on provided context. "
+                        "Be concise, accurate, and cite sources when possible."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=512,
+            temperature=0.2,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
 
 
 # Single shared instance — same variable name so rag_chain.py needs no changes

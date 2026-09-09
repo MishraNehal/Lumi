@@ -166,7 +166,69 @@ def _fetch_via_yt_dlp(url: str) -> str | None:
     return None
 
 
-def fetch_transcript(url: str) -> str | None:
+def _fetch_segments_via_transcript_api(video_id: str):
+    """Returns list of {'start': float, 'text': str} or None."""
+    if not TRANSCRIPT_API_AVAILABLE:
+        return None
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        segments = [{"start": float(item["start"]), "text": item["text"]} for item in transcript_list]
+        if segments:
+            print(f"✅ Transcript segments fetched via youtube-transcript-api ({len(segments)} segments)")
+            return segments
+    except Exception as e:
+        print(f"⚠️ youtube-transcript-api failed: {e}")
+    return None
+
+
+def _fetch_segments_via_yt_dlp(url: str):
+    """Returns list of {'start': float, 'text': str} or None, using yt-dlp json3 subtitle events."""
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_template = os.path.join(tmpdir, "%(id)s")
+            cmd = [
+                "yt-dlp", "--skip-download", "--write-auto-sub", "--write-sub",
+                "--sub-lang", "en", "--sub-format", "json3", "-o", output_template, url,
+            ]
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+            if result.returncode != 0:
+                return None
+            for file in os.listdir(tmpdir):
+                if file.endswith(".json3"):
+                    with open(os.path.join(tmpdir, file), "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    segments = []
+                    for event in data.get("events", []):
+                        start_ms = event.get("tStartMs", 0)
+                        text = "".join(seg.get("utf8", "") for seg in event.get("segs", [])).strip()
+                        if text and text != "\n":
+                            segments.append({"start": start_ms / 1000.0, "text": text})
+                    if segments:
+                        print(f"✅ Transcript segments fetched via yt-dlp ({len(segments)} segments)")
+                        return segments
+    except Exception as e:
+        print(f"⚠️ yt-dlp segment fallback failed: {e}")
+    return None
+
+
+def fetch_transcript_segments(url: str):
+    """
+    Returns list of {'start': float, 'text': str} timestamped segments, or None.
+    Used to build citation-friendly, timestamp-aware chunks.
+    """
+    video_id = extract_video_id(url)
+    if not video_id:
+        return None
+
+    segments = _fetch_segments_via_transcript_api(video_id)
+    if segments:
+        return segments
+
+    print("🔄 Trying yt-dlp fallback for segments...")
+    return _fetch_segments_via_yt_dlp(url)
+
+
+
     """
     Main entry point. Tries primary method first, then fallback.
     Returns transcript text or None if both methods fail.

@@ -91,6 +91,7 @@ from langchain_community.document_loaders import (
     UnstructuredExcelLoader,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from backend.database.vectorstore import get_vector_store
 from backend.services.ocr_service import ingest_ocr_document
 

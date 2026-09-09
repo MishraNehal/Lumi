@@ -25,7 +25,8 @@
 
 import os
 import shutil
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from typing import List
 from backend.services.document_service import ingest_document
 from fastapi import Depends
 from backend.auth.dependencies import get_current_user
@@ -40,13 +41,12 @@ SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc", ".pptx", ".xlsx", ".xls
 
 
 @router.post("")
-def upload_documents(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+def upload_documents(files: List[UploadFile] = File(...), current_user: User = Depends(get_current_user)):
     """
-    Upload and ingest one document.
+    Upload and ingest one or multiple documents.
     Supports: PDF, TXT, DOCX, PPTX, XLSX, and more.
     """
     results = []
-    files = [file]
 
     for file in files:
         _, ext = os.path.splitext(file.filename)
