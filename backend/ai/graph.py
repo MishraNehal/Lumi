@@ -117,7 +117,10 @@ def score_gate_node(state: RAGState) -> RAGState:
             "sources": [], "confidence": "low",
         }
 
-    relevant_docs = [doc for doc, score in docs_with_scores if score >= RERANK_REJECT_THRESHOLD]
+    relevant_docs = [
+        doc for doc, score in docs_with_scores
+        if score >= RERANK_REJECT_THRESHOLD or doc.metadata.get("_keyword_match")
+    ]
     top_scores = sorted([score for _, score in docs_with_scores], reverse=True)[:3]
     avg_score = sum(top_scores) / len(top_scores)
     confidence = "high" if avg_score > 2.0 else "medium" if avg_score > 0.0 else "low"
@@ -144,15 +147,21 @@ def broaden_node(state: RAGState) -> RAGState:
 
 
 def build_context_node(state: RAGState) -> RAGState:
-    relevant_docs = state["relevant_docs"]
+    relevant_docs = list(state["relevant_docs"])
     user_id = state["user_id"]
     query = state.get("search_query") or state["question"]
 
-    has_youtube = any(d.metadata.get("source") == "youtube" for d in relevant_docs)
-    if not has_youtube:
+    # When all sources are selected, keep a strong YouTube match even if an
+    # unrelated web page uses the same keyword (for example, Java the island).
+    if not state.get("source_filter"):
         try:
-            for d in get_vector_store(user_id).hybrid_search(query, k=2):
-                if d.metadata.get("source") == "youtube":
+            youtube_candidates = get_vector_store(user_id).hybrid_search(
+                query, k=8, source_filter={"source": "youtube"},
+            )
+            for d, score in rerank(query, youtube_candidates, top_n=3):
+                if score >= 0.0 and d.page_content not in {
+                    existing.page_content for existing in relevant_docs
+                }:
                     relevant_docs.append(d)
         except Exception:
             pass
@@ -164,8 +173,9 @@ def build_context_node(state: RAGState) -> RAGState:
             content = clean_youtube_text(content)
         if content and content not in seen_content and len(content) > 30:
             seen_content.add(content)
-            clean_chunks.append(content)
-            source_labels.add(get_source_label(doc))
+            source_label = get_source_label(doc)
+            clean_chunks.append(f"[Source: {source_label}]\n{content}")
+            source_labels.add(source_label)
 
     if not clean_chunks:
         return {"answer": NO_CONTEXT_RESPONSE, "sources": [], "confidence": "low"}

@@ -40,7 +40,9 @@ env_path = BASE_DIR / ".env"
 load_dotenv(env_path)
 
 
-MODEL_NAME = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Keep the model configurable, but use a currently available Groq production model
+# when GROQ_MODEL is not set in the environment.
+MODEL_NAME = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 
 class GroqLLM:
