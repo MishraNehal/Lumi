@@ -7,8 +7,6 @@ from backend.routers import ingest_web
 from backend.routers import auth
 from backend.routers import conversations
 from backend.routers import sources
-from backend.routers import study
-from backend.routers import eval as eval_router
 from backend.database.db import init_db
 
 
@@ -23,8 +21,6 @@ init_db()
 app.include_router(auth.router)
 app.include_router(conversations.router)
 app.include_router(sources.router)
-app.include_router(study.router)
-app.include_router(eval_router.router)
 app.include_router(ingest_document.router)
 app.include_router(ingest_ocr.router)
 app.include_router(ingest_youtube.router)

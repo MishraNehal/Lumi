@@ -69,38 +69,6 @@ class VectorStore:
                 break
         return results
 
-    def keyword_search(self, query: str, k: int = 8, source_filter: dict | None = None):
-        """Return documents containing the query's meaningful exact terms."""
-        raw = self.db.get(include=["documents", "metadatas"])
-        query_terms = set(_tokenize(query))
-        if not query_terms:
-            return []
-        query_lower = query.lower()
-        wants_percentages = any(term in query_lower for term in ("percentage", "percent", "marks", "score"))
-
-        ranked = {}
-        for text, meta in zip(raw.get("documents") or [], raw.get("metadatas") or []):
-            if source_filter and not all(meta.get(key) == value for key, value in source_filter.items()):
-                continue
-            document_terms = set(_tokenize(text))
-            matches = query_terms & document_terms
-            if wants_percentages and "%" in text:
-                matches = matches | {"percentage"}
-            if matches and text not in ranked:
-                ranked[text] = (len(matches), meta)
-
-        ordered = sorted(
-            ((score, text, meta) for text, (score, meta) in ranked.items()),
-            key=lambda item: (-item[0], len(item[1])),
-        )
-        return [
-            Document(
-                page_content=text,
-                metadata={**(meta or {}), "_keyword_match": True},
-            )
-            for _, text, meta in ordered[:k]
-        ]
-
     def hybrid_search(self, query: str, k: int = 10, source_filter: dict | None = None) -> list:
         """
         Combine dense vector search + sparse BM25 keyword search using
@@ -109,7 +77,6 @@ class VectorStore:
         vector_results = self.similarity_search_with_score(query, k=k, source_filter=source_filter)
         vector_docs_sorted = [d for d, _ in sorted(vector_results, key=lambda x: x[1])]
         bm25_docs = self.bm25_search(query, k=k, source_filter=source_filter)
-        keyword_docs = self.keyword_search(query, k=k, source_filter=source_filter)
 
         scores: dict[str, float] = {}
         docs_by_key: dict[str, Document] = {}
@@ -124,11 +91,6 @@ class VectorStore:
             scores[dk] = scores.get(dk, 0.0) + 1.0 / (RRF_K + rank + 1)
 
         for rank, doc in enumerate(bm25_docs):
-            dk = key(doc)
-            docs_by_key[dk] = doc
-            scores[dk] = scores.get(dk, 0.0) + 1.0 / (RRF_K + rank + 1)
-
-        for rank, doc in enumerate(keyword_docs):
             dk = key(doc)
             docs_by_key[dk] = doc
             scores[dk] = scores.get(dk, 0.0) + 1.0 / (RRF_K + rank + 1)
@@ -149,6 +111,15 @@ class VectorStore:
                     "url": meta.get("url"),
                 }
         return list(seen.values())
+
+    def delete_source(self, filename: str) -> int:
+        """Delete all chunks belonging to one ingested source. Returns chunks deleted."""
+        raw = self.db.get(where={"filename": filename}, include=["metadatas"])
+        ids = raw.get("ids") or []
+        if ids:
+            self.db.delete(ids=ids)
+            self._bm25 = None  # invalidate cache
+        return len(ids)
 
     def is_empty(self) -> bool:
         return self.get_doc_count() == 0
