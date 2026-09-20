@@ -1,31 +1,3 @@
-# fastapi
-# uvicorn
-# langchain
-# langchain-core
-# langchain-community
-# langchain-huggingface
-# sentence-transformers
-# pypdf
-# python-docx
-# python-pptx
-# pandas
-# openpyxl
-# unstructured
-# pytesseract
-# pillow
-# pdf2image
-# python-multipart
-# youtube-transcript-api==0.6.1
-# beautifulsoup4
-# requests
-# huggingface_hub
-# unstructured
-# python-docx
-# pypandoc
-# yt-dlp
-
-
-
 fastapi
 uvicorn
 langchain
@@ -43,7 +15,6 @@ python-docx
 python-pptx
 pandas
 openpyxl
-unstructured
 pytesseract
 pillow
 pdf2image
@@ -61,4 +32,3 @@ sqlalchemy
 python-jose[cryptography]
 passlib[bcrypt]
 email-validator
-bcrypt==4.0.1

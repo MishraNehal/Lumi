@@ -118,57 +118,64 @@ def chat_stream(
         return f"data: {json.dumps(event)}\n\n"
 
     def event_generator():
-        yield sse({"status": "Searching", "done": False})
-        state = prepare_state(user_question, user_id, history_text, request.source_filter)
-
-        full_answer = ""
-        sources = []
-        verified = True
-
-        if "answer" in state:
-            full_answer = state["answer"]
-            sources = state.get("sources", [])
-            yield sse({"token": full_answer, "done": False})
-        else:
-            yield sse({"status": "Generating", "done": False})
-            prompt = RAG_PROMPT.format(
-                context=state["context"], chat_history=history_text, question=user_question,
-            )
-            try:
-                for token in hf_llm.generate_stream(prompt):
-                    full_answer += token
-                    yield sse({"token": token, "done": False})
-            except Exception as e:
-                full_answer = f"⚠️ LLM error: {str(e)}"
-                yield sse({"token": full_answer, "done": False})
-
-            sources = state.get("source_labels", [])
-
-            yield sse({"status": "Verifying", "done": False})
-            verified, _ = check_faithfulness(state.get("context", ""), full_answer)
-            if not verified:
-                full_answer += FAITHFULNESS_CAVEAT
-                yield sse({"token": FAITHFULNESS_CAVEAT, "done": False})
-
-        confidence = state.get("confidence")
-        latency_ms = (time.perf_counter() - start) * 1000
-
-        s = SessionLocal()
         try:
-            s.add(Message(conversation_id=conv_id, role="user", content=user_question))
-            s.add(Message(
-                conversation_id=conv_id, role="assistant",
-                content=full_answer, sources=json.dumps(sources), verified=verified,
-            ))
-            s.commit()
-        finally:
-            s.close()
+            yield sse({"status": "Searching", "done": False})
+            state = prepare_state(user_question, user_id, history_text, request.source_filter)
 
-        _log_query(user_id, conv_id, user_question, len(sources), confidence, verified, latency_ms)
+            full_answer = ""
+            sources = []
+            verified = True
 
-        yield sse({
-            "token": "", "done": True, "sources": sources,
-            "conversation_id": conv_id, "verified": verified,
-        })
+            if "answer" in state:
+                full_answer = state["answer"]
+                sources = state.get("sources", [])
+                yield sse({"token": full_answer, "done": False})
+            else:
+                yield sse({"status": "Generating", "done": False})
+                prompt = RAG_PROMPT.format(
+                    context=state["context"], chat_history=history_text, question=user_question,
+                )
+                try:
+                    for token in hf_llm.generate_stream(prompt):
+                        full_answer += token
+                        yield sse({"token": token, "done": False})
+                except Exception as e:
+                    full_answer = f"⚠️ LLM error: {str(e)}"
+                    yield sse({"token": full_answer, "done": False})
+
+                sources = state.get("source_labels", [])
+
+                yield sse({"status": "Verifying", "done": False})
+                verified, _ = check_faithfulness(state.get("context", ""), full_answer)
+                if not verified:
+                    full_answer += FAITHFULNESS_CAVEAT
+                    yield sse({"token": FAITHFULNESS_CAVEAT, "done": False})
+
+            confidence = state.get("confidence")
+            latency_ms = (time.perf_counter() - start) * 1000
+
+            s = SessionLocal()
+            try:
+                s.add(Message(conversation_id=conv_id, role="user", content=user_question))
+                s.add(Message(
+                    conversation_id=conv_id, role="assistant",
+                    content=full_answer, sources=json.dumps(sources), verified=verified,
+                ))
+                s.commit()
+            finally:
+                s.close()
+
+            _log_query(user_id, conv_id, user_question, len(sources), confidence, verified, latency_ms)
+
+            yield sse({
+                "token": "", "done": True, "sources": sources,
+                "conversation_id": conv_id, "verified": verified,
+            })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()  # full traceback in the backend terminal
+            error_msg = f"\n\n⚠️ Something went wrong on the server: {str(e)}"
+            yield sse({"token": error_msg, "done": False})
+            yield sse({"done": True, "sources": [], "conversation_id": conv_id, "verified": False})
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

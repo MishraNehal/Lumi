@@ -13,7 +13,10 @@ router = APIRouter(prefix="/ingest/document")
 UPLOAD_DIR = "uploaded_docs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc", ".pptx", ".xlsx", ".xls", ".py", ".js", ".md"}
+SUPPORTED_EXTENSIONS = {
+    ".pdf", ".txt", ".docx", ".doc", ".pptx", ".xlsx", ".xls", ".py", ".js", ".md",
+    ".png", ".jpg", ".jpeg", ".bmp", ".tiff",
+}
 
 
 @router.post("")

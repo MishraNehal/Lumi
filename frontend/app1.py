@@ -126,64 +126,12 @@ with col_chat:
     active_filter = src_options[chosen_label]
 
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
+        with col_chat.chat_message(msg["role"]):
             st.write(msg["content"])
             if msg.get("sources"):
                 st.caption("Sources: " + ", ".join(msg["sources"]))
             if msg.get("verified") is False:
                 st.caption("⚠️ Faithfulness check flagged this answer for review.")
-
-    question = st.chat_input("Ask something...")
-    if question:
-        st.session_state.messages.append({"role": "user", "content": question, "sources": []})
-        with st.chat_message("user"):
-            st.write(question)
-
-        with st.chat_message("assistant"):
-            status_placeholder = st.empty()
-            placeholder = st.empty()
-            full_answer = ""
-            sources = []
-            conv_id = st.session_state.conversation_id
-            verified = True
-
-            try:
-                r = api_stream("/chat/stream", {
-                    "question": question,
-                    "conversation_id": st.session_state.conversation_id,
-                    "source_filter": active_filter,
-                })
-                for line in r.iter_lines(decode_unicode=True):
-                    if not line or not line.startswith("data: "):
-                        continue
-                    payload = json.loads(line[len("data: "):])
-
-                    if payload.get("status"):
-                        status_placeholder.caption(f"🔄 {payload['status']}...")
-                        continue
-
-                    if payload.get("done"):
-                        sources = payload.get("sources", [])
-                        conv_id = payload.get("conversation_id", conv_id)
-                        verified = payload.get("verified", True)
-                        break
-
-                    full_answer += payload.get("token", "")
-                    placeholder.markdown(full_answer + "▌")
-
-                status_placeholder.empty()
-                placeholder.markdown(full_answer)
-                if sources:
-                    st.caption("Sources: " + ", ".join(sources))
-                if not verified:
-                    st.caption("⚠️ Faithfulness check flagged this answer for review.")
-
-                st.session_state.conversation_id = conv_id
-                st.session_state.messages.append({
-                    "role": "assistant", "content": full_answer, "sources": sources, "verified": verified,
-                })
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
 
 with col_sources:
     st.markdown("#### 📥 Add Sources")
@@ -195,21 +143,40 @@ with col_sources:
             with st.spinner("Ingesting..."):
                 payload = [("files", (f.name, f.getvalue())) for f in files]
                 r = api_post("/ingest/document", files=payload)
-            st.success(r.json().get("message")) if r.status_code == 200 else st.error(r.text)
+            if r.status_code == 200:
+                data = r.json()
+                st.success(data.get("message", "Done."))
+                for res in data.get("results", []):
+                    if res["status"] == "success":
+                        st.caption(f"✅ {res['filename']} — {res['chunks']} chunks created")
+                    else:
+                        st.caption(f"❌ {res['filename']} — {res['message']}")
+            else:
+                st.error(r.text)
 
     with tab_web:
         url = st.text_input("Website URL", label_visibility="collapsed", placeholder="https://...")
         if st.button("Ingest web page", use_container_width=True) and url:
             with st.spinner("Scraping..."):
                 r = api_post("/ingest/web", params={"url": url})
-            st.success(r.json().get("message")) if r.status_code == 200 else st.error(r.text)
+            if r.status_code == 200:
+                data = r.json()
+                st.success(data.get("message", "Done."))
+                st.caption(f"📦 {data.get('chunks', 0)} chunks created")
+            else:
+                st.error(r.text)
 
     with tab_yt:
         yt_url = st.text_input("YouTube URL", label_visibility="collapsed", placeholder="https://youtube.com/...")
         if st.button("Ingest video", use_container_width=True) and yt_url:
             with st.spinner("Fetching transcript..."):
                 r = api_post("/ingest/youtube", params={"url": yt_url})
-            st.success(r.json().get("message")) if r.status_code == 200 else st.error(r.text)
+            if r.status_code == 200:
+                data = r.json()
+                st.success(data.get("message", "Done."))
+                st.caption(f"📦 {data.get('chunks', 0)} timestamped chunks created")
+            else:
+                st.error(r.text)
 
     st.markdown("#### 📚 Your Sources")
     if not src_list:
@@ -224,3 +191,55 @@ with col_sources:
                 st.rerun()
             else:
                 st.error("Failed to delete.")
+
+# ══════════════════════════════ CHAT INPUT — kept at root level so it stays pinned to bottom ══════════════════════════════
+question = st.chat_input("Ask something...")
+if question:
+    st.session_state.messages.append({"role": "user", "content": question, "sources": []})
+    col_chat.chat_message("user").write(question)
+
+    with col_chat.chat_message("assistant"):
+        status_placeholder = st.empty()
+        placeholder = st.empty()
+        full_answer = ""
+        sources = []
+        conv_id = st.session_state.conversation_id
+        verified = True
+
+        try:
+            r = api_stream("/chat/stream", {
+                "question": question,
+                "conversation_id": st.session_state.conversation_id,
+                "source_filter": active_filter,
+            })
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data: "):
+                    continue
+                payload = json.loads(line[len("data: "):])
+
+                if payload.get("status"):
+                    status_placeholder.caption(f"🔄 {payload['status']}...")
+                    continue
+
+                if payload.get("done"):
+                    sources = payload.get("sources", [])
+                    conv_id = payload.get("conversation_id", conv_id)
+                    verified = payload.get("verified", True)
+                    break
+
+                full_answer += payload.get("token", "")
+                placeholder.markdown(full_answer + "▌")
+
+            status_placeholder.empty()
+            placeholder.markdown(full_answer)
+            if sources:
+                st.caption("Sources: " + ", ".join(sources))
+            if not verified:
+                st.caption("⚠️ Faithfulness check flagged this answer for review.")
+
+            st.session_state.conversation_id = conv_id
+            st.session_state.messages.append({
+                "role": "assistant", "content": full_answer, "sources": sources, "verified": verified,
+            })
+        except Exception as e:
+            st.error(f"Something went wrong: {e}")

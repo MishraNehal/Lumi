@@ -10,6 +10,7 @@ class RAGState(TypedDict, total=False):
     search_query: str          # rewritten/broadened query used for retrieval
     retry_count: int
     needs_retry: bool
+    intent: str                 # "conversational" | "off_topic" | "document"
 
     docs_with_scores: list
     relevant_docs: list

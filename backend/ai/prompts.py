@@ -91,3 +91,30 @@ STUDY MATERIAL:
 {context}
 
 JSON:"""
+
+# Classifies a non-greeting message into one of three intents
+INTENT_CLASSIFY_PROMPT = """Classify the user's message into exactly one category:
+- CONVERSATIONAL: small talk, thanks, telling the assistant something about themselves \
+(like their name), or asking about earlier parts of this conversation (e.g. "what's my name?").
+- DOCUMENT: anything else — including any question that could plausibly relate to the \
+user's uploaded material, even if you don't know what that material contains. When in \
+doubt, choose DOCUMENT — a separate retrieval step will check if it's actually answerable.
+
+Conversation history:
+{chat_history}
+
+Message: {question}
+
+Reply with exactly one word: CONVERSATIONAL or DOCUMENT."""
+
+# Handles conversational turns naturally, using history as memory (e.g. remembering a name)
+GENERAL_CHAT_PROMPT = """You are Lumi, a friendly AI study assistant. Respond naturally \
+and conversationally to the user's message. Use the conversation history to remember \
+details the user has shared with you (like their name), but do not invent facts about \
+their documents.
+
+Conversation history:
+{chat_history}
+
+User: {question}
+Lumi:"""

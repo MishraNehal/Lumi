@@ -1,19 +1,21 @@
-from fastapi import Depends, HTTPException, Header
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from backend.database.db import get_db
 from backend.database.models import User
 from backend.auth.security import decode_access_token
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
 
 def get_current_user(
-    authorization: str = Header(None),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
+    if not credentials or not credentials.credentials:
         raise HTTPException(status_code=401, detail="Missing or invalid token.")
 
-    token = authorization.split(" ")[1]
-    user_id = decode_access_token(token)
+    user_id = decode_access_token(credentials.credentials)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 

@@ -1,15 +1,15 @@
 from langgraph.graph import StateGraph, START, END
 from backend.ai.graph_state import RAGState
 from backend.ai.prompts import (
-    RAG_PROMPT, NO_CONTEXT_RESPONSE, OFF_TOPIC_RESPONSE,
+    RAG_PROMPT, NO_CONTEXT_RESPONSE,
     QUERY_REWRITE_PROMPT, BROADEN_QUERY_PROMPT, FAITHFULNESS_PROMPT,
+    INTENT_CLASSIFY_PROMPT, GENERAL_CHAT_PROMPT,
 )
 from backend.ai.llm import hf_llm
 from backend.database.vectorstore import get_vector_store
 from backend.ai.reranker import rerank
 from backend.ai.rag_helpers import (
-    is_greeting, is_off_topic, get_source_label,
-    clean_youtube_text, RERANK_REJECT_THRESHOLD,
+    is_greeting, get_source_label, clean_youtube_text, RERANK_REJECT_THRESHOLD,
 )
 
 FAITHFULNESS_CAVEAT = (
@@ -19,12 +19,9 @@ FAITHFULNESS_CAVEAT = (
 
 # ── Entry router ──
 def route_intent(state: RAGState) -> str:
-    q = state["question"]
-    if is_greeting(q):
+    if is_greeting(state["question"]):
         return "greeting"
-    if is_off_topic(q):
-        return "off_topic"
-    return "check_kb"
+    return "classify"
 
 
 def greeting_node(state: RAGState) -> RAGState:
@@ -39,8 +36,37 @@ def greeting_node(state: RAGState) -> RAGState:
     }
 
 
-def off_topic_node(state: RAGState) -> RAGState:
-    return {"answer": OFF_TOPIC_RESPONSE, "sources": [], "confidence": None}
+# ── LLM-based intent classification: conversational vs off-topic vs document ──
+def classify_node(state: RAGState) -> RAGState:
+    try:
+        prompt = INTENT_CLASSIFY_PROMPT.format(
+            chat_history=state.get("chat_history", "No previous conversation."),
+            question=state["question"],
+        )
+        verdict = hf_llm.generate(prompt).strip().upper()
+    except Exception:
+        verdict = "DOCUMENT"
+
+    intent = "conversational" if "CONVERSATIONAL" in verdict else "document"
+    return {"intent": intent}
+
+
+def route_classified(state: RAGState) -> str:
+    return "general_chat" if state.get("intent") == "conversational" else "check_kb"
+
+
+def general_chat_node(state: RAGState) -> RAGState:
+    try:
+        prompt = GENERAL_CHAT_PROMPT.format(
+            chat_history=state.get("chat_history", "No previous conversation."),
+            question=state["question"],
+        )
+        answer = hf_llm.generate(prompt).strip()
+        if not answer:
+            answer = "I'm here! What would you like to know?"
+    except Exception:
+        answer = "I'm here! What would you like to know?"
+    return {"answer": answer, "sources": [], "confidence": None}
 
 
 def check_kb_node(state: RAGState) -> RAGState:
@@ -117,10 +143,7 @@ def score_gate_node(state: RAGState) -> RAGState:
             "sources": [], "confidence": "low",
         }
 
-    relevant_docs = [
-        doc for doc, score in docs_with_scores
-        if score >= RERANK_REJECT_THRESHOLD or doc.metadata.get("_keyword_match")
-    ]
+    relevant_docs = [doc for doc, score in docs_with_scores if score >= RERANK_REJECT_THRESHOLD]
     top_scores = sorted([score for _, score in docs_with_scores], reverse=True)[:3]
     avg_score = sum(top_scores) / len(top_scores)
     confidence = "high" if avg_score > 2.0 else "medium" if avg_score > 0.0 else "low"
@@ -147,21 +170,15 @@ def broaden_node(state: RAGState) -> RAGState:
 
 
 def build_context_node(state: RAGState) -> RAGState:
-    relevant_docs = list(state["relevant_docs"])
+    relevant_docs = state["relevant_docs"]
     user_id = state["user_id"]
     query = state.get("search_query") or state["question"]
 
-    # When all sources are selected, keep a strong YouTube match even if an
-    # unrelated web page uses the same keyword (for example, Java the island).
-    if not state.get("source_filter"):
+    has_youtube = any(d.metadata.get("source") == "youtube" for d in relevant_docs)
+    if not has_youtube:
         try:
-            youtube_candidates = get_vector_store(user_id).hybrid_search(
-                query, k=8, source_filter={"source": "youtube"},
-            )
-            for d, score in rerank(query, youtube_candidates, top_n=3):
-                if score >= 0.0 and d.page_content not in {
-                    existing.page_content for existing in relevant_docs
-                }:
+            for d in get_vector_store(user_id).hybrid_search(query, k=2):
+                if d.metadata.get("source") == "youtube":
                     relevant_docs.append(d)
         except Exception:
             pass
@@ -173,9 +190,8 @@ def build_context_node(state: RAGState) -> RAGState:
             content = clean_youtube_text(content)
         if content and content not in seen_content and len(content) > 30:
             seen_content.add(content)
-            source_label = get_source_label(doc)
-            clean_chunks.append(f"[Source: {source_label}]\n{content}")
-            source_labels.add(source_label)
+            clean_chunks.append(content)
+            source_labels.add(get_source_label(doc))
 
     if not clean_chunks:
         return {"answer": NO_CONTEXT_RESPONSE, "sources": [], "confidence": "low"}
@@ -238,7 +254,8 @@ _graph = StateGraph(RAGState)
 
 _graph.add_node("check_kb", check_kb_node)
 _graph.add_node("greeting", greeting_node)
-_graph.add_node("off_topic", off_topic_node)
+_graph.add_node("classify", classify_node)
+_graph.add_node("general_chat", general_chat_node)
 _graph.add_node("empty", empty_node)
 _graph.add_node("rewrite_query", rewrite_query_node)
 _graph.add_node("retrieve", retrieve_node)
@@ -249,7 +266,10 @@ _graph.add_node("generate", generate_node)
 _graph.add_node("verify", verify_node)
 
 _graph.add_conditional_edges(START, route_intent, {
-    "greeting": "greeting", "off_topic": "off_topic", "check_kb": "check_kb",
+    "greeting": "greeting", "classify": "classify",
+})
+_graph.add_conditional_edges("classify", route_classified, {
+    "general_chat": "general_chat", "check_kb": "check_kb",
 })
 _graph.add_conditional_edges("check_kb", route_kb, {"empty": "empty", "rewrite_query": "rewrite_query"})
 _graph.add_edge("rewrite_query", "retrieve")
@@ -265,7 +285,7 @@ _graph.add_conditional_edges("build_context", route_context, {
 })
 
 _graph.add_edge("greeting", END)
-_graph.add_edge("off_topic", END)
+_graph.add_edge("general_chat", END)
 _graph.add_edge("empty", END)
 _graph.add_edge("generate", "verify")
 _graph.add_edge("verify", END)
@@ -289,8 +309,11 @@ def prepare_state(
     route = route_intent(state)
     if route == "greeting":
         return {**state, **greeting_node(state)}
-    if route == "off_topic":
-        return {**state, **off_topic_node(state)}
+
+    state = {**state, **classify_node(state)}
+    classified = route_classified(state)
+    if classified == "general_chat":
+        return {**state, **general_chat_node(state)}
 
     if route_kb(state) == "empty":
         return {**state, **empty_node(state)}
