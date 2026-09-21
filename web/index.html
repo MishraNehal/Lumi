@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumi - AI Knowledge Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="auth-view" class="auth-view">
+    <section class="auth-card">
+      <div class="brand-mark">✦</div>
+      <p class="eyebrow">PERSONAL KNOWLEDGE ASSISTANT</p>
+      <h1>Lumi</h1>
+      <p class="muted">Ask questions about your documents, websites, and videos.</p>
+      <div class="auth-tabs">
+        <button class="tab active" data-auth-mode="login">Log in</button>
+        <button class="tab" data-auth-mode="signup">Create account</button>
+      </div>
+      <form id="auth-form">
+        <label>Email<input id="auth-email" type="email" required autocomplete="email"></label>
+        <label>Password<input id="auth-password" type="password" required autocomplete="current-password"></label>
+        <button class="primary full" type="submit" id="auth-submit">Log in</button>
+      </form>
+      <p id="auth-error" class="error" role="alert"></p>
+    </section>
+  </main>
+
+  <main id="app-view" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand"><span class="brand-mark small">✦</span><strong>Lumi</strong></div>
+        <button id="new-chat" class="primary">+ New chat</button>
+      </div>
+      <input id="conversation-search" class="search" type="search" placeholder="Search chats...">
+      <div id="conversation-list" class="conversation-list"></div>
+      <div class="sidebar-footer">
+        <span id="user-email" class="muted"></span>
+        <button id="logout" class="ghost">Log out</button>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">YOUR KNOWLEDGE SPACE</p>
+          <h2>What would you like to understand?</h2>
+        </div>
+        <select id="source-filter" aria-label="Ask this source">
+          <option value="">All sources</option>
+        </select>
+      </header>
+
+      <div id="message-list" class="message-list">
+        <div class="empty-state">
+          <div class="empty-icon">✦</div>
+          <h3>Start a conversation</h3>
+          <p>Upload a source, then ask Lumi anything about it.</p>
+        </div>
+      </div>
+      <form id="chat-form" class="chat-form">
+        <input id="question" type="text" placeholder="Ask Lumi anything..." autocomplete="off" required>
+        <button class="primary send" type="submit" aria-label="Send">↑</button>
+      </form>
+    </section>
+
+    <aside class="sources-panel">
+      <div class="panel-heading"><h3>Add sources</h3><span class="status-dot"></span></div>
+      <div class="source-card">
+        <h4>Upload documents</h4>
+        <p class="muted">PDF, DOCX, PPTX, XLSX, TXT, images and code.</p>
+        <input id="document-files" type="file" multiple accept=".pdf,.txt,.docx,.doc,.pptx,.xlsx,.xls,.py,.js,.md,.png,.jpg,.jpeg,.bmp,.tiff">
+        <button id="upload-documents" class="secondary full">Ingest files</button>
+      </div>
+      <div class="source-card">
+        <h4>Web page</h4>
+        <input id="web-url" type="url" placeholder="https://example.com">
+        <button id="ingest-web" class="secondary full">Ingest web page</button>
+      </div>
+      <div class="source-card">
+        <h4>YouTube video</h4>
+        <input id="youtube-url" type="url" placeholder="https://youtube.com/...">
+        <button id="ingest-youtube" class="secondary full">Ingest video</button>
+      </div>
+      <h3 class="sources-title">Your sources</h3>
+      <div id="source-list" class="source-list"></div>
+      <p id="toast" class="toast" role="status"></p>
+    </aside>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

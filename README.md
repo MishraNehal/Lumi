@@ -218,6 +218,19 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8000
 streamlit run frontend/app.py
 ```
 
+### Optional HTML frontend
+
+The project also includes a standalone HTML/CSS/JavaScript frontend in `web/`. Keep the
+FastAPI backend running, then open a third terminal:
+
+```bash
+cd web
+python -m http.server 5500
+```
+
+Open `http://localhost:5500` in your browser. The Streamlit frontend remains available
+at the URL shown by `streamlit run frontend/app.py`.
+
 Then open the Streamlit URL shown in the terminal, usually:
 
 ```text
